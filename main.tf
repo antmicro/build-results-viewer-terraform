@@ -1,3 +1,43 @@
+/**
+ * # Terraform module for deploying build-results-viewer to GCP
+ *
+ * Copyright (c) 2023 [Antmicro](https://www.antmicro.com)
+ *
+ * This module deploys a set of infrastructure resources that together comprise a self-hosted [Build Results Viewer](https://github.com/antmicro/build-results-viewer) instance.
+ *
+ * ## Running the container
+ *
+ * The application is deployed as a Docker container 
+ * on a Compute Engine instance running [Container-Optimized OS](https://cloud.google.com/container-optimized-os/docs).
+ * Please be advised that this module on its own does not handle deploying the container image; 
+ * this is something that you need to do separately after building the image using `bazel build -c opt server:build_results_viewer_container`.
+ *
+ * If you're uploading the image to the [Artifact Registry](https://cloud.google.com/artifact-registry), you need to grant the app instance service account
+ * the read permission to the repository or project-wide.
+ * This may be accomplished by creating an IAM binding between the service account and the `roles/artifactregistry.reader` role.
+ *
+ * ## Exposing the front-end and back-end services
+ *
+ * By default, the instance does not have any firewall rules for exposing the internal ports used by the application.
+ * 
+ * Some of the possible strategies for exposing the front-end (port 8080) service to the Internet include:
+ * * Setting up a [Load Balancer](https://cloud.google.com/load-balancing?hl=en) that will act as a reverse proxy (SSL termination is possible).
+ * * Creating a Compute Engine instance and configuring a reverse proxy server, e.g. nginx or HAProxy.
+ *
+ * In order to expose the internal backend (gRPC port 1985) to a GCP instance running within the same or a different project, 
+ * you can use [VPC Network Peering](https://cloud.google.com/vpc/docs/vpc-peering).
+ * After doing this, make sure to populate the `grpc_allowlist` variable (e.g. `10.4.3.2/32` for a single instance) to allow ingress traffic to the service.
+ *
+ * ## Required permissions
+ *
+ * In order to deploy the infrastructure, make sure that the service account has the following roles:
+ *
+ * * **Compute Admin** for creating and managing resources within the Compute Engine.
+ * * **Service Account Creator** for managing the service account linked with the coordinator instance.
+ * * **Service Account User** for assigning the aforementioned service account to the coordinator instance.
+ * * **Service Usage Admin** for enabling the necessary APIs.
+ */
+
 data "google_project" "project" {}
 
 locals {
