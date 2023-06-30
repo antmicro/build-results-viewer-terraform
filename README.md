@@ -20,8 +20,8 @@ This may be accomplished by creating an IAM binding between the service account 
 By default, the instance does not have any firewall rules for exposing the internal ports used by the application.
 
 Some of the possible strategies for exposing the front-end (port 8080) service to the Internet include:
+* Using the built-in [Caddy](https://caddyserver.com/) support by setting the `caddy_external_ip` and `caddy_domain` variables.
 * Setting up a [Load Balancer](https://cloud.google.com/load-balancing?hl=en) that will act as a reverse proxy (SSL termination is possible).
-* Creating a Compute Engine instance and configuring a reverse proxy server, e.g. nginx or HAProxy.
 
 In order to expose the internal backend (gRPC port 1985) to a GCP instance running within the same or a different project,
 you can use [VPC Network Peering](https://cloud.google.com/vpc/docs/vpc-peering).
@@ -61,10 +61,13 @@ No modules.
 | [google_compute_address.app-internal-ip](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_address) | resource |
 | [google_compute_backend_service.brv-service](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_backend_service) | resource |
 | [google_compute_disk.data-disk](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_disk) | resource |
+| [google_compute_firewall.allow-caddy-http](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
+| [google_compute_firewall.allow-caddy-https](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
 | [google_compute_firewall.allow-hc-rule](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
 | [google_compute_firewall.expose-grpc](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
 | [google_compute_http_health_check.manifest-json](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_http_health_check) | resource |
 | [google_compute_instance.brv](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance) | resource |
+| [google_compute_instance.caddy](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance) | resource |
 | [google_compute_instance_group.brv-group](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance_group) | resource |
 | [google_compute_network.network](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_network) | resource |
 | [google_compute_subnetwork.main-subnet](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_subnetwork) | resource |
@@ -79,6 +82,9 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_basename"></a> [basename](#input\_basename) | Base name used for creating cloud resources | `string` | n/a | yes |
+| <a name="input_caddy_domain"></a> [caddy\_domain](#input\_caddy\_domain) | (optional) Domain pointed at `caddy_external_ip` for SSL termination | `string` | `null` | no |
+| <a name="input_caddy_external_ip"></a> [caddy\_external\_ip](#input\_caddy\_external\_ip) | (optional) Reserved external IP for the Internet-facing proxy | `string` | `null` | no |
+| <a name="input_caddy_image"></a> [caddy\_image](#input\_caddy\_image) | (optional) Container image of Caddy reverse proxy | `string` | `"caddy"` | no |
 | <a name="input_grpc_allowlist"></a> [grpc\_allowlist](#input\_grpc\_allowlist) | A list of CIDR ranges to allow to access the gRPC back-end | `list(any)` | `[]` | no |
 | <a name="input_image"></a> [image](#input\_image) | The image to be used for the application | `string` | n/a | yes |
 | <a name="input_internal_port"></a> [internal\_port](#input\_internal\_port) | Internal HTTP server port | `number` | `8080` | no |

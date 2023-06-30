@@ -39,3 +39,21 @@ variable "grpc_allowlist" {
   type        = list(any)
   default     = []
 }
+
+variable "caddy_image" {
+  description = "(optional) Container image of Caddy reverse proxy"
+  type        = string
+  default     = "caddy"
+}
+
+variable "caddy_domain" {
+  description = "(optional) Domain pointed at `caddy_external_ip` for SSL termination"
+  type        = string
+  default     = null
+}
+
+variable "caddy_external_ip" {
+  description = "(optional) Reserved external IP for the Internet-facing proxy"
+  type        = string
+  default     = null
+}

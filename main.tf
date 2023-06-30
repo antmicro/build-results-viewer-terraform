@@ -21,8 +21,8 @@
  * By default, the instance does not have any firewall rules for exposing the internal ports used by the application.
  * 
  * Some of the possible strategies for exposing the front-end (port 8080) service to the Internet include:
+ * * Using the built-in [Caddy](https://caddyserver.com/) support by setting the `caddy_external_ip` and `caddy_domain` variables.
  * * Setting up a [Load Balancer](https://cloud.google.com/load-balancing?hl=en) that will act as a reverse proxy (SSL termination is possible).
- * * Creating a Compute Engine instance and configuring a reverse proxy server, e.g. nginx or HAProxy.
  *
  * In order to expose the internal backend (gRPC port 1985) to a GCP instance running within the same or a different project, 
  * you can use [VPC Network Peering](https://cloud.google.com/vpc/docs/vpc-peering).
@@ -42,6 +42,7 @@ data "google_project" "project" {}
 
 locals {
   data_disk_name = "${var.basename}--data"
+  app_ip         = cidrhost(var.ip_cidr_range, 2)
   spec = {
     spec = {
       containers = [
@@ -79,10 +80,49 @@ locals {
       restartPolicy = "Always"
     }
   }
-  spec_as_yaml = yamlencode(local.spec)
-  hc-tag       = "allow-brv-hc"
-  brv-grpc-tag = "allow-brv-grpc"
-  backend_port = 1985
+  caddy_instance_name = "${var.basename}--proxy"
+  caddy_spec = {
+    spec = {
+      containers = [
+        {
+          name    = local.caddy_instance_name
+          image   = var.caddy_image
+          command = ["caddy"]
+          args = flatten(
+            [
+              "reverse-proxy",
+              "--to=http://${local.app_ip}:${var.internal_port}",
+              var.caddy_domain != null ? ["--from=${var.caddy_domain}"] : []
+            ]
+          )
+          volumeMounts = [
+            {
+              name      = "host-path-0"
+              mountPath = "/data"
+              readOnly  = false
+            }
+          ]
+        }
+      ]
+      volumes = [
+        {
+          name = "host-path-0"
+          hostPath = {
+            path = "/var/caddy_data"
+          }
+        }
+      ]
+      restartPolicy = "Always"
+    }
+  }
+
+  spec_as_yaml       = yamlencode(local.spec)
+  caddy_spec_as_yaml = yamlencode(local.caddy_spec)
+  caddy_count        = var.caddy_external_ip != null ? 1 : 0
+  hc-tag             = "allow-brv-hc"
+  brv-grpc-tag       = "allow-brv-grpc"
+  caddy-tag          = "allow-brv-caddy"
+  backend_port       = 1985
 }
 
 resource "google_project_service" "compute-engine-api" {
@@ -114,13 +154,43 @@ resource "google_compute_firewall" "allow-hc-rule" {
   name          = "allow-hc--${var.basename}"
   direction     = "INGRESS"
   network       = google_compute_network.network.self_link
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16", var.ip_cidr_range]
   target_tags   = [local.hc-tag]
 
   allow {
     ports    = [var.internal_port]
     protocol = "tcp"
   }
+}
+
+resource "google_compute_firewall" "allow-caddy-http" {
+  name          = "allow-http--${local.caddy_instance_name}"
+  direction     = "INGRESS"
+  network       = google_compute_network.network.self_link
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [local.caddy-tag]
+
+  allow {
+    ports    = [80]
+    protocol = "tcp"
+  }
+
+  count = local.caddy_count
+}
+
+resource "google_compute_firewall" "allow-caddy-https" {
+  name          = "allow-https--${local.caddy_instance_name}"
+  direction     = "INGRESS"
+  network       = google_compute_network.network.self_link
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [local.caddy-tag]
+
+  allow {
+    ports    = [443]
+    protocol = "tcp"
+  }
+
+  count = var.caddy_domain != null ? 1 : 0
 }
 
 resource "google_compute_firewall" "expose-grpc" {
@@ -140,7 +210,7 @@ resource "google_compute_address" "app-internal-ip" {
   name         = "${var.basename}--internal"
   subnetwork   = google_compute_subnetwork.main-subnet.id
   address_type = "INTERNAL"
-  address      = cidrhost(var.ip_cidr_range, 2)
+  address      = local.app_ip
   region       = var.region
 }
 
@@ -164,6 +234,61 @@ resource "google_compute_disk" "data-disk" {
 data "google_compute_image" "coreos" {
   family  = "cos-stable"
   project = "cos-cloud"
+}
+
+resource "google_compute_instance" "caddy" {
+  name         = local.caddy_instance_name
+  zone         = var.zone
+  machine_type = "e2-medium"
+
+  scheduling {
+    automatic_restart   = true
+    on_host_maintenance = "MIGRATE"
+  }
+
+  boot_disk {
+    initialize_params {
+      type  = "pd-standard"
+      image = "projects/cos-cloud/global/images/family/cos-stable"
+      size  = 10
+    }
+  }
+
+  network_interface {
+    network    = google_compute_network.network.id
+    subnetwork = google_compute_subnetwork.main-subnet.id
+
+    access_config {
+      nat_ip = var.caddy_external_ip
+    }
+  }
+
+  service_account {
+    email = google_service_account.sa.email
+    scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+  }
+
+  metadata = {
+    gce-container-declaration = local.caddy_spec_as_yaml
+  }
+
+  lifecycle {
+    ignore_changes = [
+      metadata["ssh-keys"]
+    ]
+  }
+
+  labels = {
+    container-vm = data.google_compute_image.coreos.name
+  }
+
+  tags = [
+    local.caddy-tag
+  ]
+
+  count = local.caddy_count
 }
 
 resource "google_compute_instance" "brv" {
